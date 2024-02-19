@@ -33,6 +33,9 @@ class PyTorchClassifier(BaseEstimator, ClassifierMixin):
         self.model.fc = nn.Linear(num_ftrs, self.num_classes)
         self.model.to(self.device)
 
+        if self.weights is not None:
+            self.weights = self.weights.to(self.device)
+
         if self.loss_func_type == 'CE':
             self.loss_fn = nn.CrossEntropyLoss(weight=self.weights) if weights is not None else nn.CrossEntropyLoss()
         else:
@@ -114,3 +117,4 @@ class PyTorchClassifier(BaseEstimator, ClassifierMixin):
         with torch.no_grad():
             outputs = torch.softmax(self.model(X_tensor), dim=1)
         return outputs.cpu().detach().numpy()
+
