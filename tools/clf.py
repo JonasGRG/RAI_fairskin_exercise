@@ -23,8 +23,13 @@ class PyTorchClassifier(BaseEstimator,ClassifierMixin):
         self.num_classes = num_classes
         self.weights = weights
 
-        if self.model_type == 'resnet':
+        if self.model_type == 'resnet50':
             self.model = models.resnet50(pretrained=True)
+            num_ftrs = self.model.fc.in_features
+            self.model.fc = nn.Linear(num_ftrs, self.num_classes) 
+            self.model.to(device)
+        elif self.model_type == 'resnet18':
+            self.model = models.resnet18(pretrained=True)
             num_ftrs = self.model.fc.in_features
             self.model.fc = nn.Linear(num_ftrs, self.num_classes) 
             self.model.to(device)
