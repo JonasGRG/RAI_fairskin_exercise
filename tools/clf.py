@@ -4,6 +4,7 @@ import torch.optim as optim
 from torchvision import models
 from torch.utils.data import DataLoader, TensorDataset
 from sklearn.base import BaseEstimator, ClassifierMixin
+import matplotlib.pyplot as plt
 
 class PyTorchClassifier(BaseEstimator, ClassifierMixin):
     def __init__(self, model_type, loss_func_type, device, num_classes,
@@ -28,7 +29,6 @@ class PyTorchClassifier(BaseEstimator, ClassifierMixin):
         else:
             raise NotImplementedError
         
-        # Adjust the final layer based on num_classes
         num_ftrs = self.model.fc.in_features
         self.model.fc = nn.Linear(num_ftrs, self.num_classes)
         self.model.to(self.device)
@@ -56,6 +56,11 @@ class PyTorchClassifier(BaseEstimator, ClassifierMixin):
             dataset = TensorDataset(X_train.type(torch.FloatTensor), y_train.type(torch.LongTensor))
             self.train_loader = DataLoader(dataset, batch_size=self.batch_size, shuffle=True)
 
+        if X_val is not None and y_val is not None and self.test_loader is None:
+            val_dataset = TensorDataset(X_val.type(torch.FloatTensor), y_val.type(torch.LongTensor))
+            self.test_loader = DataLoader(val_dataset, batch_size=self.batch_size, shuffle=False)
+
+        train_losses, val_losses = [], []
         for epoch in range(self.epochs):
             self.model.train()
             total_loss = 0
@@ -67,8 +72,33 @@ class PyTorchClassifier(BaseEstimator, ClassifierMixin):
                 loss.backward()
                 self.optimizer.step()
                 total_loss += loss.item()
-            avg_loss = total_loss / len(self.train_loader)
-            print(f"Epoch {epoch+1}/{self.epochs}, Loss: {avg_loss:.4f}")
+            train_losses.append(total_loss / len(self.train_loader))
+
+            if self.test_loader:
+                self.model.eval()
+                total_val_loss = 0
+                with torch.no_grad():
+                    for X_batch, y_batch in self.test_loader:
+                        X_batch, y_batch = X_batch.to(self.device), y_batch.to(self.device)
+                        output = self.model(X_batch)
+                        loss = self.loss_fn(output, y_batch)
+                        total_val_loss += loss.item()
+                val_losses.append(total_val_loss / len(self.test_loader))
+
+            print(f"Epoch {epoch+1}/{self.epochs}, Train Loss: {train_losses[-1]:.4f}, Validation Loss: {val_losses[-1] if val_losses else 'N/A'}")
+
+        self.plot_losses(train_losses, val_losses)
+
+    def plot_losses(self, train_losses, val_losses):
+        plt.figure(figsize=(10, 5))
+        plt.plot(train_losses, label='Training Loss')
+        if val_losses:
+            plt.plot(val_losses, label='Validation Loss')
+        plt.title('Losses over Epochs')
+        plt.xlabel('Epochs')
+        plt.ylabel('Loss')
+        plt.legend()
+        plt.show()
 
     def predict(self, X):
         X_tensor = X.type(torch.FloatTensor).to(self.device)
@@ -83,70 +113,4 @@ class PyTorchClassifier(BaseEstimator, ClassifierMixin):
         self.model.eval()
         with torch.no_grad():
             outputs = torch.softmax(self.model(X_tensor), dim=1)
-        return outputs.cpu().detach().numpy()
-
-
-
-class PyTorchClassifier2DInput(PyTorchClassifier):
-    def __init__(self,model_type, loss_func_type, device, num_classes,
-                 epochs=10, batch_size=32,weights=None,
-                 lr = 1e-6, weight_decay=0.0, img_size = (3,128,128)):
-        super(PyTorchClassifier2DInput, self).__init__(model_type, loss_func_type, device, num_classes,
-                 epochs, batch_size,weights,
-                 lr, weight_decay)
-        self.img_size = img_size
-
-    def fit(self, X_train, y_train):
-        assert len(X_train.shape) == 2
-        X_train = torch.reshape(X_train,(-1,)+self.img_size)
-
-        dataset = TensorDataset(X_train.type(torch.FloatTensor), y_train.type(torch.LongTensor))
-        train_loader = DataLoader(dataset, batch_size=self.batch_size, shuffle=True)
-
-        # Training loop
-        for epoch in range(self.epochs):
-            self.model.train()
-            total_loss = 0
-            for X_batch, y_batch in train_loader:
-                X_batch = X_batch.to(self.device)
-                y_batch = y_batch.to(self.device)
-
-                self.optimizer.zero_grad()
-                output = self.model(X_batch)
-                loss = self.loss_fn(output, y_batch)
-                loss.backward()
-                self.optimizer.step()
-                total_loss += loss.item()
-
-            avg_loss = total_loss / len(train_loader)
-            print(f"Epoch {epoch+1}/{self.epochs}, Loss: {avg_loss:.4f}")
-
-    def predict(self, X):
-        assert len(X.shape) == 2
-        X = torch.reshape(X,(-1,)+self.img_size)
-
-        X_tensor = X.type(torch.FloatTensor) 
-        X_tensor = X_tensor.to(self.device)
-
-        self.model.eval()
-
-        with torch.no_grad():
-            outputs = self.model(X_tensor)
-            _, predicted = torch.max(outputs, 1)
-
-        return predicted.cpu().detach().numpy()
-
-    def predict_proba(self, X):
-
-        assert len(X.shape) == 2
-        X = torch.reshape(X,(-1,)+self.img_size)
-        
-        X_tensor = X.type(torch.FloatTensor) 
-        X_tensor = X_tensor.to(self.device)
-
-        self.model.eval()
-
-        with torch.no_grad():
-            outputs = torch.softmax(self.model(X_tensor), dim=1)
-
         return outputs.cpu().detach().numpy()
