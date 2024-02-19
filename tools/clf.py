@@ -1,7 +1,3 @@
-'''
-create clf using torch
-'''
-
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -9,10 +5,10 @@ from torchvision import models
 from torch.utils.data import DataLoader, TensorDataset
 from sklearn.base import BaseEstimator, ClassifierMixin
 
-class PyTorchClassifier(BaseEstimator,ClassifierMixin):
+class PyTorchClassifier(BaseEstimator, ClassifierMixin):
     def __init__(self, model_type, loss_func_type, device, num_classes,
-                 epochs=10, batch_size=32,weights=None,
-                 lr = 1e-6, weight_decay=0.0):
+                 epochs=10, batch_size=32, weights=None,
+                 lr=1e-6, weight_decay=0.0, train_loader=None, test_loader=None):
         self.model_type = model_type
         self.loss_func_type = loss_func_type
         self.epochs = epochs
@@ -22,102 +18,73 @@ class PyTorchClassifier(BaseEstimator,ClassifierMixin):
         self.weight_decay = weight_decay
         self.num_classes = num_classes
         self.weights = weights
+        self.train_loader = train_loader
+        self.test_loader = test_loader
 
         if self.model_type == 'resnet50':
             self.model = models.resnet50(pretrained=True)
-            num_ftrs = self.model.fc.in_features
-            self.model.fc = nn.Linear(num_ftrs, self.num_classes) 
-            self.model.to(device)
         elif self.model_type == 'resnet18':
             self.model = models.resnet18(pretrained=True)
-            num_ftrs = self.model.fc.in_features
-            self.model.fc = nn.Linear(num_ftrs, self.num_classes) 
-            self.model.to(device)
         else:
             raise NotImplementedError
+        
+        # Adjust the final layer based on num_classes
+        num_ftrs = self.model.fc.in_features
+        self.model.fc = nn.Linear(num_ftrs, self.num_classes)
+        self.model.to(self.device)
 
         if self.loss_func_type == 'CE':
-            if weights is None:
-                self.loss_fn = nn.CrossEntropyLoss()
-            else:
-                self.loss_fn = nn.CrossEntropyLoss(weight=self.weights)
+            self.loss_fn = nn.CrossEntropyLoss(weight=self.weights) if weights is not None else nn.CrossEntropyLoss()
         else:
             raise NotImplementedError
         
-        self.model.to(self.device)
-        self.loss_fn.to(self.device)
-
         self.init_optimizer()
 
-    def init_optimizer(self,):
-        optimizer = optim.Adam(self.model.parameters(), lr=self.lr, weight_decay =self.weight_decay)
-        self.optimizer = optimizer
-        return
-    
+    def init_optimizer(self):
+        self.optimizer = optim.Adam(self.model.parameters(), lr=self.lr, weight_decay=self.weight_decay)
+
     def load_pretrained_weights(self, state_dict_or_path):
-        """
-        Load pretrained model weights.
-        
-        Parameters:
-        - state_dict_or_path: Either a path to a saved state_dict file (str) 
-                              or a state_dict object.
-        """
-        if isinstance(state_dict_or_path, str):  # If the argument is a file path
+        if isinstance(state_dict_or_path, str):
             state_dict = torch.load(state_dict_or_path, map_location=self.device)
         else:
-            state_dict = state_dict_or_path  # Assume it's already a state_dict
-        
+            state_dict = state_dict_or_path
         self.model.load_state_dict(state_dict)
 
-    def fit(self, X_train, y_train, X_val=None, y_val =None):
-        '''
-        fit function
-        you can write early stop by further split the dataset into train and validation
-        '''
-        # set up dataloader
-        dataset = TensorDataset(X_train.type(torch.FloatTensor), y_train.type(torch.LongTensor))
-        train_loader = DataLoader(dataset, batch_size=self.batch_size, shuffle=True)
+    def fit(self, X_train=None, y_train=None, X_val=None, y_val=None):
+        if self.train_loader is None:
+            assert X_train is not None and y_train is not None, "X_train and y_train must be provided if train_loader is not."
+            dataset = TensorDataset(X_train.type(torch.FloatTensor), y_train.type(torch.LongTensor))
+            self.train_loader = DataLoader(dataset, batch_size=self.batch_size, shuffle=True)
 
-        # training loop
         for epoch in range(self.epochs):
             self.model.train()
             total_loss = 0
-            for X_batch, y_batch in train_loader:
-                X_batch = X_batch.to(self.device)
-                y_batch = y_batch.to(self.device)
-
+            for X_batch, y_batch in self.train_loader:
+                X_batch, y_batch = X_batch.to(self.device), y_batch.to(self.device)
                 self.optimizer.zero_grad()
                 output = self.model(X_batch)
                 loss = self.loss_fn(output, y_batch)
                 loss.backward()
                 self.optimizer.step()
                 total_loss += loss.item()
-
-            avg_loss = total_loss / len(train_loader)
+            avg_loss = total_loss / len(self.train_loader)
             print(f"Epoch {epoch+1}/{self.epochs}, Loss: {avg_loss:.4f}")
 
     def predict(self, X):
-        X_tensor = X.type(torch.FloatTensor) 
-        X_tensor = X_tensor.to(self.device)
-
+        X_tensor = X.type(torch.FloatTensor).to(self.device)
         self.model.eval()
-
         with torch.no_grad():
             outputs = self.model(X_tensor)
             _, predicted = torch.max(outputs, 1)
-
         return predicted.cpu().detach().numpy()
 
     def predict_proba(self, X):
-        X_tensor = X.type(torch.FloatTensor) 
-        X_tensor = X_tensor.to(self.device)
-
+        X_tensor = X.type(torch.FloatTensor).to(self.device)
         self.model.eval()
-
         with torch.no_grad():
             outputs = torch.softmax(self.model(X_tensor), dim=1)
-
         return outputs.cpu().detach().numpy()
+
 
 
 class PyTorchClassifier2DInput(PyTorchClassifier):
