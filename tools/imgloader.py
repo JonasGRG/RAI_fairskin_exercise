@@ -7,8 +7,6 @@ from sklearn.model_selection import train_test_split
 
 
 
-
-
 def get_compose_list(img_size):
     '''
     get the compose function list based on img size
@@ -26,7 +24,7 @@ def get_compose_list(img_size):
         TF.Resize((img_size[1],img_size[2]), 
                 interpolation=TF.InterpolationMode.BICUBIC, 
                 antialias=True),
-        TF.Lambda(lambda t: (t * 2) - 1), # Scale between [-1, 1] 
+        TF.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]), # normalize to imagenet 
         ]
     )
     return compose_list
@@ -72,7 +70,7 @@ def split(df,train_size=0.8,random_seed=42):
 def loader(img_dir,
            default_split=False,
            random_seed = 42, 
-           img_size = (3,128,128), # resize to
+           img_size = (3,224,224), # resize to
            device = None,
            ):
     '''
