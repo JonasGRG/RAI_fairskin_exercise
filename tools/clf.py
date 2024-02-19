@@ -48,6 +48,21 @@ class PyTorchClassifier(BaseEstimator,ClassifierMixin):
         optimizer = optim.Adam(self.model.parameters(), lr=self.lr, weight_decay =self.weight_decay)
         self.optimizer = optimizer
         return
+    
+    def load_pretrained_weights(self, state_dict_or_path):
+        """
+        Load pretrained model weights.
+        
+        Parameters:
+        - state_dict_or_path: Either a path to a saved state_dict file (str) 
+                              or a state_dict object.
+        """
+        if isinstance(state_dict_or_path, str):  # If the argument is a file path
+            state_dict = torch.load(state_dict_or_path, map_location=self.device)
+        else:
+            state_dict = state_dict_or_path  # Assume it's already a state_dict
+        
+        self.model.load_state_dict(state_dict)
 
     def fit(self, X_train, y_train, X_val=None, y_val =None):
         '''
