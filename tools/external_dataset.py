@@ -4,7 +4,7 @@ import torch
 from torchvision import datasets, transforms
 from torch.utils.data import DataLoader
 
-def get_data_loaders(root_path, batch_size=32, num_workers=4):
+def get_data_loaders(root_path, batch_size=32, num_workers=2):
     """
     Creates and returns dataloaders for the melanoma cancer dataset with data augmentations for the training set.
 

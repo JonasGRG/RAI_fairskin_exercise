@@ -5,6 +5,7 @@ from torchvision import models
 from torch.utils.data import DataLoader, TensorDataset
 from sklearn.base import BaseEstimator, ClassifierMixin
 import matplotlib.pyplot as plt
+from tqdm import tqdm
 
 class PyTorchClassifier(BaseEstimator, ClassifierMixin):
     def __init__(self, model_type, loss_func_type, device, num_classes,
@@ -53,44 +54,54 @@ class PyTorchClassifier(BaseEstimator, ClassifierMixin):
             state_dict = state_dict_or_path
         self.model.load_state_dict(state_dict)
 
-    def fit(self, X_train=None, y_train=None, X_val=None, y_val=None):
-        if self.train_loader is None:
-            assert X_train is not None and y_train is not None, "X_train and y_train must be provided if train_loader is not."
-            dataset = TensorDataset(X_train.type(torch.FloatTensor), y_train.type(torch.LongTensor))
-            self.train_loader = DataLoader(dataset, batch_size=self.batch_size, shuffle=True)
+def fit(self, X_train=None, y_train=None, X_val=None, y_val=None):
+    if self.train_loader is None:
+        assert X_train is not None and y_train is not None, "X_train and y_train must be provided if train_loader is not."
+        dataset = TensorDataset(X_train.type(torch.FloatTensor), y_train.type(torch.LongTensor))
+        self.train_loader = DataLoader(dataset, batch_size=self.batch_size, shuffle=True)
 
-        if X_val is not None and y_val is not None and self.test_loader is None:
-            val_dataset = TensorDataset(X_val.type(torch.FloatTensor), y_val.type(torch.LongTensor))
-            self.test_loader = DataLoader(val_dataset, batch_size=self.batch_size, shuffle=False)
+    if X_val is not None and y_val is not None and self.test_loader is None:
+        val_dataset = TensorDataset(X_val.type(torch.FloatTensor), y_val.type(torch.LongTensor))
+        self.test_loader = DataLoader(val_dataset, batch_size=self.batch_size, shuffle=False)
 
-        train_losses, val_losses = [], []
-        for epoch in range(self.epochs):
-            self.model.train()
-            total_loss = 0
-            for X_batch, y_batch in self.train_loader:
-                X_batch, y_batch = X_batch.to(self.device), y_batch.to(self.device)
-                self.optimizer.zero_grad()
-                output = self.model(X_batch)
-                loss = self.loss_fn(output, y_batch)
-                loss.backward()
-                self.optimizer.step()
-                total_loss += loss.item()
-            train_losses.append(total_loss / len(self.train_loader))
+    train_losses, val_losses = [], []
+    for epoch in range(self.epochs):
+        self.model.train()
+        total_loss = 0
+        # Wrap the training loader with tqdm for a progress bar
+        train_loader_progress = tqdm(self.train_loader, desc=f"Epoch {epoch+1}/{self.epochs} Training")
+        for X_batch, y_batch in train_loader_progress:
+            X_batch, y_batch = X_batch.to(self.device), y_batch.to(self.device)
+            self.optimizer.zero_grad()
+            output = self.model(X_batch)
+            loss = self.loss_fn(output, y_batch)
+            loss.backward()
+            self.optimizer.step()
+            total_loss += loss.item()
+            # Update the progress bar with the average loss
+            train_loader_progress.set_postfix({'train_loss': f'{total_loss / (len(train_loader_progress)): .4f}'})
+        train_losses.append(total_loss / len(self.train_loader))
 
-            if self.test_loader:
-                self.model.eval()
-                total_val_loss = 0
-                with torch.no_grad():
-                    for X_batch, y_batch in self.test_loader:
-                        X_batch, y_batch = X_batch.to(self.device), y_batch.to(self.device)
-                        output = self.model(X_batch)
-                        loss = self.loss_fn(output, y_batch)
-                        total_val_loss += loss.item()
-                val_losses.append(total_val_loss / len(self.test_loader))
+        if self.test_loader:
+            self.model.eval()
+            total_val_loss = 0
+            # Wrap the validation loader with tqdm for a progress bar
+            val_loader_progress = tqdm(self.test_loader, desc=f"Epoch {epoch+1}/{self.epochs} Validation")
+            with torch.no_grad():
+                for X_batch, y_batch in val_loader_progress:
+                    X_batch, y_batch = X_batch.to(self.device), y_batch.to(self.device)
+                    output = self.model(X_batch)
+                    loss = self.loss_fn(output, y_batch)
+                    total_val_loss += loss.item()
+                    # Update the progress bar with the average loss
+                    val_loader_progress.set_postfix({'val_loss': f'{total_val_loss / (len(val_loader_progress)): .4f}'})
+            val_losses.append(total_val_loss / len(self.test_loader))
 
-            print(f"Epoch {epoch+1}/{self.epochs}, Train Loss: {train_losses[-1]:.4f}, Validation Loss: {val_losses[-1] if val_losses else 'N/A'}")
+        # It's better to use logging or print outside the tqdm loop for final epoch-wise metrics
+        print(f"Epoch {epoch+1}/{self.epochs}, Train Loss: {train_losses[-1]:.4f}, Validation Loss: {val_losses[-1] if val_losses else 'N/A'}")
 
-        self.plot_losses(train_losses, val_losses)
+    self.plot_losses(train_losses, val_losses)
+
 
     def plot_losses(self, train_losses, val_losses):
         plt.figure(figsize=(10, 5))
