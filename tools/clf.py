@@ -68,8 +68,9 @@ class PyTorchClassifier(BaseEstimator, ClassifierMixin):
         for epoch in range(self.epochs):
             self.model.train()
             total_loss = 0
-            # Initialize tqdm loop for training data
-            for X_batch, y_batch in tqdm(self.train_loader, desc=f"Epoch {epoch+1}/{self.epochs} Training"):
+            # Wrap training loader with tqdm and use set_postfix for inline loss updates
+            train_loader_tqdm = tqdm(self.train_loader, desc=f"Epoch {epoch+1}/{self.epochs} Training")
+            for X_batch, y_batch in train_loader_tqdm:
                 X_batch, y_batch = X_batch.to(self.device), y_batch.to(self.device)
                 self.optimizer.zero_grad()
                 output = self.model(X_batch)
@@ -77,27 +78,26 @@ class PyTorchClassifier(BaseEstimator, ClassifierMixin):
                 loss.backward()
                 self.optimizer.step()
                 total_loss += loss.item()
-                # Directly print the loss for the current batch
-                print(f"Train Step Loss: {loss.item():.4f}")
-            average_train_loss = total_loss / len(self.train_loader)
-            train_losses.append(average_train_loss)
+                # Update progress bar to show the latest batch loss without adding new lines
+                train_loader_tqdm.set_postfix(train_loss=f"{loss.item():.4f}", refresh=True)
+            train_losses.append(total_loss / len(self.train_loader))
 
             if self.test_loader:
                 self.model.eval()
                 total_val_loss = 0
-                # Initialize tqdm loop for validation data
+                val_loader_tqdm = tqdm(self.test_loader, desc=f"Epoch {epoch+1}/{self.epochs} Validation")
                 with torch.no_grad():
-                    for X_batch, y_batch in tqdm(self.test_loader, desc=f"Epoch {epoch+1}/{self.epochs} Validation"):
+                    for X_batch, y_batch in val_loader_tqdm:
                         X_batch, y_batch = X_batch.to(self.device), y_batch.to(self.device)
                         output = self.model(X_batch)
                         loss = self.loss_fn(output, y_batch)
                         total_val_loss += loss.item()
-                        # Directly print the loss for the current validation batch
-                        print(f"Validation Step Loss: {loss.item():.4f}")
-                average_val_loss = total_val_loss / len(self.test_loader)
-                val_losses.append(average_val_loss)
+                        # Update progress bar to show the latest validation batch loss
+                        val_loader_tqdm.set_postfix(val_loss=f"{loss.item():.4f}", refresh=True)
+                val_losses.append(total_val_loss / len(self.test_loader))
 
-            print(f"Epoch {epoch+1}/{self.epochs}, Train Loss: {average_train_loss:.4f}, Validation Loss: {average_val_loss if val_losses else 'N/A'}")
+            # Print epoch summary with average losses
+            print(f"Epoch {epoch+1}/{self.epochs}, Train Loss: {train_losses[-1]:.4f}, Validation Loss: {val_losses[-1] if val_losses else 'N/A'}")
 
         self.plot_losses(train_losses, val_losses)
 
