@@ -4,6 +4,20 @@ import torch
 from torchvision import datasets, transforms
 from torch.utils.data import DataLoader
 import albumentations
+from albumentations.pytorch.transforms import ToTensorV2
+from PIL import Image
+import numpy as np
+
+
+def open_img(img_path):
+     img=Image.open(img_path)
+     return np.array(img)
+
+class Transform():
+    def __init__(self,transform):
+        self.transform=transform
+    def __call__(self,image):
+        return self.transform(image=image)["image"]
 
 def get_data_loaders(root_path, image_size=224, batch_size=32, num_workers=2):
     """
@@ -42,16 +56,20 @@ def get_data_loaders(root_path, image_size=224, batch_size=32, num_workers=2):
         albumentations.ShiftScaleRotate(shift_limit=0.1, scale_limit=0.1, rotate_limit=15, border_mode=0, p=0.85),
         albumentations.Resize(image_size, image_size),
         albumentations.Cutout(max_h_size=int(image_size * 0.375), max_w_size=int(image_size * 0.375), num_holes=1, p=0.7),
-        albumentations.Normalize()
+        albumentations.Normalize(),
+        ToTensorV2(),
     ])
 
     transforms_val = albumentations.Compose([
         albumentations.Resize(image_size, image_size),
-        albumentations.Normalize()
+        albumentations.Normalize(),
+        ToTensorV2()
     ])
 
-    train_dataset = datasets.ImageFolder(root=f'{root_path}/train', transform=transforms_train)
-    test_dataset = datasets.ImageFolder(root=f'{root_path}/test', transform=transforms_val)
+    
+
+    train_dataset = datasets.ImageFolder(root=f'{root_path}/train', transform=Transform(transforms_train),loader=open_img)
+    test_dataset = datasets.ImageFolder(root=f'{root_path}/test', transform=Transform(transforms_val),loader=open_img)
 
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers)
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
