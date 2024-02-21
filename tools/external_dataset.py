@@ -3,8 +3,9 @@
 import torch
 from torchvision import datasets, transforms
 from torch.utils.data import DataLoader
+import albumentations
 
-def get_data_loaders(root_path, batch_size=32, num_workers=2):
+def get_data_loaders(root_path, image_size=224, batch_size=32, num_workers=2):
     """
     Creates and returns dataloaders for the melanoma cancer dataset with data augmentations for the training set.
 
@@ -17,26 +18,40 @@ def get_data_loaders(root_path, batch_size=32, num_workers=2):
     - train_loader, test_loader: DataLoaders for the training and testing datasets.
     """
     # Augmentations for the training data
-    train_transforms = transforms.Compose([
-        transforms.Resize((224, 224)),
-        transforms.RandomRotation(degrees=15),  # Rotate images by up to 15 degrees
-        transforms.RandomResizedCrop(224, scale=(0.8, 1.0)),  # Scale and crop images
-        transforms.RandomHorizontalFlip(),  # Flip images horizontally
-        transforms.RandomVerticalFlip(),  # Flip images vertically (optional)
-        transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1),  # Adjust color settings
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+    transforms_train = albumentations.Compose([
+        albumentations.Transpose(p=0.5),
+        albumentations.VerticalFlip(p=0.5),
+        albumentations.HorizontalFlip(p=0.5),
+        albumentations.RandomBrightness(limit=0.2, p=0.75),
+        albumentations.RandomContrast(limit=0.2, p=0.75),
+        albumentations.OneOf([
+            albumentations.MotionBlur(blur_limit=5),
+            albumentations.MedianBlur(blur_limit=5),
+            albumentations.GaussianBlur(blur_limit=5),
+            albumentations.GaussNoise(var_limit=(5.0, 30.0)),
+        ], p=0.7),
+
+        albumentations.OneOf([
+            albumentations.OpticalDistortion(distort_limit=1.0),
+            albumentations.GridDistortion(num_steps=5, distort_limit=1.),
+            albumentations.ElasticTransform(alpha=3),
+        ], p=0.7),
+
+        albumentations.CLAHE(clip_limit=4.0, p=0.7),
+        albumentations.HueSaturationValue(hue_shift_limit=10, sat_shift_limit=20, val_shift_limit=10, p=0.5),
+        albumentations.ShiftScaleRotate(shift_limit=0.1, scale_limit=0.1, rotate_limit=15, border_mode=0, p=0.85),
+        albumentations.Resize(image_size, image_size),
+        albumentations.Cutout(max_h_size=int(image_size * 0.375), max_w_size=int(image_size * 0.375), num_holes=1, p=0.7),
+        albumentations.Normalize()
     ])
 
-    # Standard transformations for the test data
-    test_transforms = transforms.Compose([
-        transforms.Resize((224, 224)),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+    transforms_val = albumentations.Compose([
+        albumentations.Resize(image_size, image_size),
+        albumentations.Normalize()
     ])
 
-    train_dataset = datasets.ImageFolder(root=f'{root_path}/train', transform=train_transforms)
-    test_dataset = datasets.ImageFolder(root=f'{root_path}/test', transform=test_transforms)
+    train_dataset = datasets.ImageFolder(root=f'{root_path}/train', transform=transforms_train)
+    test_dataset = datasets.ImageFolder(root=f'{root_path}/test', transform=transforms_val)
 
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers)
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
